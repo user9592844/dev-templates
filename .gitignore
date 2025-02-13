@@ -1,0 +1,5 @@
+# Ignore compile artifacts
+*.o
+
+# Ignore direnv dotfile
+.direnv
