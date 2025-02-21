@@ -3,11 +3,19 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    makes.url = "github:fluidattacks/makes";
+
+    naersk = {
+      url = "github:nix-community/naersk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, makes, rust-overlay }:
+  outputs = { self, nixpkgs, naersk, fenix }:
     let
       # Define supported host systems
       forEachSupportedSystem = nixpkgs.lib.genAttrs [
@@ -18,41 +26,48 @@
       ];
     in {
       devShells = forEachSupportedSystem (system:
-        let
-          overlays = [ (import rust-overlay) ];
-          pkgs = import nixpkgs { inherit system overlays; };
+        let pkgs = nixpkgs.legacyPackages."${system}";
         in {
-          default = with pkgs;
-            mkShell {
-              # Developer Utilities
-              packages = [
-                # Cargo Tools
-                cargo-audit
-                cargo-expand
-                cargo-tarpaulin
-                cargo-nextest
-                cargo-udeps
-                cargo-watch
+          default = pkgs.mkShell {
+            # Non-compiler tooling for use
+            packages = with pkgs; [
+              cargo-audit
+              cargo-edit
+              cargo-expand
+              cargo-tarpaulin
+              cargo-nextest
+              cargo-udeps
+              cargo-watch
 
-                # Nix Tools
-                deadnix
-                statix
+              bat
+              fd
+              helix
+              lldb
+              lsd
+              ripgrep
+            ];
 
-                # Developer Tools
-                fd
-                helix
-                lldb
-                lsd
-                ripgrep
-                rust-analyzer
+            # Tooling to compile the source on the development platform
+            nativeBuildInputs = [ self.packages."${system}".rustToolchain ];
+          };
+        }); # end devShells
 
-                # CICD Tools
-                makes.packages."${system}".default
-              ];
+      packages = forEachSupportedSystem (system: {
+        rustToolchain = with fenix.packages."${system}";
+          combine [
+            stable.cargo
+            stable.clippy
+            stable.rust-src
+            stable.rustc
+            stable.rustfmt
 
-              # Project Build Dependencies
-              buildInputs = [ rust-bin.beta.latest.default ];
-            };
-        });
+            rust-analyzer
+          ];
+
+        naersk = naersk.lib."${system}".override {
+          cargo = self.rustToolchain;
+          rustc = self.rustToolchain;
+        };
+      }); # end packages
     };
 }
