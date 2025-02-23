@@ -34,7 +34,7 @@
               cargo-audit
               cargo-edit
               cargo-expand
-              cargo-tarpaulin
+              cargo-llvm-cov
               cargo-nextest
               cargo-udeps
               cargo-watch
@@ -49,25 +49,62 @@
 
             # Tooling to compile the source on the development platform
             nativeBuildInputs = [ self.packages."${system}".rustToolchain ];
+
+            shellHooks = ''
+              cargo watch -x check -x test -x run
+            '';
           };
         }); # end devShells
 
-      packages = forEachSupportedSystem (system: {
-        rustToolchain = with fenix.packages."${system}";
-          combine [
-            stable.cargo
-            stable.clippy
-            stable.rust-src
-            stable.rustc
-            stable.rustfmt
+      packages = forEachSupportedSystem (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
 
-            rust-analyzer
-          ];
+          naersk' = pkgs.callPackage naersk {
+            cargo = self.packages."${system}".rustToolchain;
+            rustc = self.packages."${system}".rustToolchain;
+          };
+        in {
+          rustToolchain = with fenix.packages."${system}";
+            combine [
+              stable.cargo
+              stable.clippy
+              stable.rust-src
+              stable.rustc
+              stable.rustfmt
 
-        naersk = naersk.lib."${system}".override {
-          cargo = self.rustToolchain;
-          rustc = self.rustToolchain;
-        };
-      }); # end packages
+              targets.aarch64-unknown-linux-gnu.stable.rust-std
+              targets.riscv32imac-unknown-none-elf.stable.rust-std
+
+              rust-analyzer
+            ];
+
+          # Build the crate using as a host system binary
+          build-default = naersk'.buildPackage {
+            src = ./.;
+            RUSTC_LINKER = "${pkgs.mold}/bin/mold";
+          };
+
+          # TODO (user9592844): Figure out a way to streamline this
+          # Build the crate as an ARM64 Linux binary
+          build-aarch64 = naersk'.buildPackage {
+            src = ./.;
+            CARGO_BUILD_TARGET = "aarch64-unknown-linux-gnu";
+            CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER =
+              let inherit (pkgs.pkgsCross.aarch64-multiplatform.stdenv) cc;
+              in "${cc}/bin/${cc.targetPrefix}cc";
+          };
+
+          # TODO (user9592844): Figure out a way to streamline this
+          # Build the crate as a RISC-V 32-bit bare-metal binary
+          build-riscv32-bare = naersk'.buildPackage {
+            src = ./.;
+            CARGO_BUILD_TARGET = "riscv32imac-unknown-none-elf";
+            CARGO_TARGET_RISCV32IMAC_UNKNOWN_NONE_ELF_LINKER =
+              let inherit (pkgs.pkgsCross.riscv32-embedded.stdenv) cc;
+              in "${cc}/bin/${cc.targetPrefix}.cc";
+
+          };
+        }); # end packages
     };
 }
