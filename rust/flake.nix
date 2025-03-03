@@ -44,6 +44,8 @@
               helix
               lldb
               lsd
+              openocd
+              probe-rs-tools
               ripgrep
             ];
 
@@ -76,18 +78,18 @@
               targets.aarch64-unknown-linux-gnu.stable.rust-std
               targets.riscv32imac-unknown-none-elf.stable.rust-std
 
-              rust-analyzer
+              stable.rust-analyzer
             ];
 
           # Build the crate using as a host system binary
-          build-default = naersk'.buildPackage {
+          native = naersk'.buildPackage {
             src = ./.;
             RUSTC_LINKER = "${pkgs.mold}/bin/mold";
           };
 
           # TODO (user9592844): Figure out a way to streamline this
           # Build the crate as an ARM64 Linux binary
-          build-aarch64 = naersk'.buildPackage {
+          aarch64-unknown-linux-gnu = naersk'.buildPackage {
             src = ./.;
             CARGO_BUILD_TARGET = "aarch64-unknown-linux-gnu";
             CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER =
@@ -97,7 +99,7 @@
 
           # TODO (user9592844): Figure out a way to streamline this
           # Build the crate as a RISC-V 32-bit bare-metal binary
-          build-riscv32-bare = naersk'.buildPackage {
+          riscv32imac-unknown-none-elf = naersk'.buildPackage {
             src = ./.;
             CARGO_BUILD_TARGET = "riscv32imac-unknown-none-elf";
             CARGO_TARGET_RISCV32IMAC_UNKNOWN_NONE_ELF_LINKER =
